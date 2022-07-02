@@ -15,7 +15,7 @@ class Regression_Dataset(object):
         self.name = name
         self.mode = mode
         
-        file_path = "C:/Users/user/Desktop/DeepLearning/MLP_CLASS/abalone.csv"
+        file_path = "./abalone.csv"
         
         with open(file_path) as csvfile:
             csvreader = csv.reader(csvfile)
