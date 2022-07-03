@@ -12,6 +12,7 @@ import time
 import numpy as np
 from mathutil import *
 
+
 # mlp class 선언
 class mlp_model(object):
     
