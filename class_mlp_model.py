@@ -2,6 +2,9 @@
 Date 220616.
     MLP 직접 구현해 보기 with using class. (by SCL)
         VER01(220616. only for regression)
+Date 220703.
+    BATCH NORMALIZATION 논문구현하기. (by SCL)
+        VER02(220703. B.N)
 """
 
 import os
@@ -12,10 +15,15 @@ from mathutil import *
 # mlp class 선언
 class mlp_model(object):
     
-    def __init__(self, name, hconfigs, learning_type, dataset):
+    ###
+    # for ver02. add batch_nor parameter
+    ###
+    def __init__(self, name, hconfigs, learning_type, dataset, batch_nor = False):
         self.name = name
         self.learning_type = learning_type
         
+        self.batch_nor = batch_nor
+
         self.dataset = dataset
         # dataset은 달리 선언한 class이다.
         # 위 class(dataset)은 tr_X, tr_Y, te_X, te_Y, val_X, val_Y 라는 class attribute를 지닌다.
@@ -26,15 +34,22 @@ class mlp_model(object):
         #       result of layers_param_generate function(self.pm)
         #       self.pm is dictionary type
         #           {'key[layer #]' : [weight_matrix, bias_matrix], ...}
+        #     
+        #     ver02. add batch_nor parameter to seperate functionality when user want to use batch normalization
         self.layers_param_generate(hconfigs, self.dataset.xs.shape[-1],\
-                                   self.dataset.ys.shape[-1])
+                                   self.dataset.ys.shape[-1], self.batch_nor)
     
+    # ver02. add batch normalization
+    #     add batch_nor parameter at __Str__
+
     def __str__(self):
         print('model {} brief information. {}, training data : {}, test data :\
-              {}, validation data : {}'.format(self.name, self.learning_type, \
+              {}, validation data : {}, batch normarlization : {}'.format(self.name, self.learning_type, \
             self.dataset.tr_X.shape[0], self.dataset.te_X.shape[0], \
-            self.dataset.val_X.shape[0]))
+            self.dataset.val_X.shape[0], self.batch_nor))
     
+
+    # ver02. add batch normalization
     def __exec__(self, epoch_count = 10, batch_size = 10, learning_rate = 0.001, report = 0, cnt = 3):
         # for model training, use self.dataset.tr_X, self.dataset.tr_Y, self.pm
         """
@@ -47,6 +62,7 @@ class mlp_model(object):
                     4. backprop_neuralnet
             학습에 필요한 각 함수의 세부적인 내용은 어떠한 학습인지에 따라 변하기에, class dataset(object)에서 별도로 정의하여 사용한다.
         """
+        # ver02. add batch_nor
         self.mlp_train(epoch_count, batch_size, learning_rate, report)
         
         # for model testing, use self.dataset.te_X, self.dataset.tr_Y, self.pm
@@ -56,7 +72,8 @@ class mlp_model(object):
         # self.dataset.te_Y, self.pm
         self.visualization(cnt)
 
-    def layers_param_generate(self, hconfigs, input_shape, output_shape):
+    # ver02. add batch_nor parameter to seperate layers param generate function's operations
+    def layers_param_generate(self, hconfigs, input_shape, output_shape, batch_nor):
         self.hconfigs = hconfigs
         self.pm_hiddens = []
         
@@ -64,18 +81,28 @@ class mlp_model(object):
             if i == 0:
                 pre_cnt = input_shape
                 aft_cnt = hconfigs[i]
+                gamma = 1
+                beta = 0
             elif i == len(hconfigs):
                 pre_cnt = hconfigs[i - 1]
                 aft_cnt = output_shape
+                gamma = 0
+                beta = 0
             else:
                 pre_cnt = hconfigs[i - 1]
                 aft_cnt = hconfigs[i]
+                gamma = 1
+                beta = 0
             
             weight = np.random.normal(0, 0.030, [pre_cnt, aft_cnt])
             bias = np.zeros(aft_cnt)
-            
-            self.pm_hiddens.append({'w' : weight, 'b' : bias})
 
+            if batch_nor == False:
+                self.pm_hiddens.append({'w' : weight, 'b' : bias})  
+            else:
+                # when batch_nor == True
+                # it saves random values[weight, bias, gamma, beta] at self.pm_hiddens
+                self.pm_hiddens.append({'w' : weight, 'b' : bias, 'g' : gamma, 'beta' : beta})
 
     def mlp_train(self, epoch_count = 10, batch_size = 10, \
                   learning_rate = 0.001, report = 0):
@@ -110,6 +137,7 @@ class mlp_model(object):
                 trX, trY = self.dataset.get_train_data(batch_size, j)
                 
                 # forward propagation
+                # ver02. add batch_normalization
                 output, aux_nn = self.forward_neuralnet(trX)
                 # output = X * W
                 # aux_nn = X
@@ -167,20 +195,43 @@ class mlp_model(object):
 
     def forward_neuralnet(self, x):
         aux_nn = []
-        
         temp_x = x
-        for n, pm in enumerate(self.pm_hiddens):
-            
-            temp_y = np.matmul(temp_x, pm['w']) + pm['b']
-            
-            if n != (len(self.pm_hiddens) - 1):
-                output = relu(temp_y)
-                aux_nn.append([temp_x, output])
-                temp_x = output
-            else:
-                output = temp_y
-                aux_nn.append([temp_x, output])
-        
+
+        # batch normalization
+        if self.batch_nor == False:
+            for n, pm in enumerate(self.pm_hiddens):
+                
+                temp_y = np.matmul(temp_x, pm['w']) + pm['b']
+                
+                if n != (len(self.pm_hiddens) - 1):
+                    output = relu(temp_y)
+                    aux_nn.append([temp_x, output])
+                    temp_x = output
+                else:
+                    output = temp_y
+                    aux_nn.append([temp_x, output])
+        else:
+            for n, pm in enumerate(self.pm_hiddens):
+                # print(temp_x.shape, pm['w'].shape, pm['b'].shape)
+                temp_x2 = np.matmul(temp_x, pm['w']) + pm['b']
+
+                temp_batch_mean = batch_mean(temp_x2)
+                temp_batch_std = batch_std(temp_x2)
+
+                epsilon = np.ones(shape = (temp_batch_std.shape[0], 1)) * 1e-5
+
+                temp_y = pm['g'] * np.divide((np.subtract(temp_x2, temp_batch_mean)), (temp_batch_std + epsilon)) + pm['beta']
+
+                if n != (len(self.pm_hiddens) - 1):
+                    # output은 Relu 비선형 함수의 결과이자, 그 다음 layer에 들어가는 input이다.
+                    output = relu(temp_y)
+                    aux_nn.append([temp_x, temp_x2, temp_y, output, temp_batch_mean, temp_batch_std])
+                    temp_x = output
+                else:
+                    output = temp_x2
+                    aux_nn.append([temp_x, temp_x2, temp_y, output, temp_batch_mean, temp_batch_std])
+                    temp_x = output
+
         return output, aux_nn
 
     # by using output(calculated from forward_neuralnet), estimate result
@@ -201,30 +252,75 @@ class mlp_model(object):
         # aux_nn = [X_1st, X_2nd, ...]
         first = 1
         
-        for n in reversed(range(len(self.pm_hiddens))):
-            if first == 1:
-                G_y = G_output
-                x, y = aux_nn[n]
+        if self.batch_nor == False:
+            for n in reversed(range(len(self.pm_hiddens))):
+                if first == 1:
+                    G_y = G_output
+                    x, y = aux_nn[n]
+                    
+                    first = 0
+                else:
+                    x, y = aux_nn[n]
+                    G_y = derv_relu(y) * G_y
                 
-                first = 0
-            else:
-                x, y = aux_nn[n]
-                G_y = derv_relu(y) * G_y
-            
-            g_y_weight = x.transpose()
-            g_y_input = self.pm_hiddens[n]['w'].transpose()
-            
-            G_weight = np.matmul(g_y_weight, G_y)
-            G_bias = np.sum(G_y, axis = 0)
-            G_input = np.matmul(G_y, g_y_input)
-            
-            # updating weight
-            self.pm_hiddens[n]['w'] -= self.learning_rate * G_weight
-            
-            # updating bias
-            self.pm_hiddens[n]['b'] -= self.learning_rate * G_bias
-            
-            G_y = G_input
+                g_y_weight = x.transpose()
+                g_y_input = self.pm_hiddens[n]['w'].transpose()
+                
+                G_weight = np.matmul(g_y_weight, G_y)
+                G_bias = np.sum(G_y, axis = 0)
+                G_input = np.matmul(G_y, g_y_input)
+                
+                # updating weight
+                self.pm_hiddens[n]['w'] -= self.learning_rate * G_weight
+                
+                # updating bias
+                self.pm_hiddens[n]['b'] -= self.learning_rate * G_bias
+                
+                G_y = G_input
+        else:
+            for n in reversed(range(len(self.pm_hiddens))):
+                if first == 1:
+                    # at first(마지막)의 경우 relu function, batch nor 이 적용되지 않기에 분리한다.
+                    G_y = G_output
+                    x1, x2, y_batch, y, mean, std = aux_nn[n]
+                    
+                    first = 0
+                    g_y_weight = x1.transpose()
+                    g_y_input = self.pm_hiddens[n]['w'].transpose()
+                    
+                    G_weight = np.matmul(g_y_weight, G_y)
+                    G_bias = np.sum(G_y, axis = 0)
+                    G_input = np.matmul(G_y, g_y_input)
+                    
+                    # updating weight
+                    self.pm_hiddens[n]['w'] -= self.learning_rate * G_weight
+                    
+                    # updating bias
+                    self.pm_hiddens[n]['b'] -= self.learning_rate * G_bias
+                    
+                    G_y = G_input
+                else:
+                    x1, x2, y_batch, y, mean, std = aux_nn[n]
+                    G_y = derv_relu(y) * G_y
+                    # G_y는 deltaL / deltaY 이다.
+                    
+                    G_y = self.batch_nor_backprop(G_y, x1, x2, y_batch, mean, std, n)
+                    
+                    g_y_weight = x1.transpose()
+                    g_y_input = self.pm_hiddens[n]['w'].transpose()
+                    
+                    G_weight = np.matmul(g_y_weight, G_y)
+                    G_bias = np.sum(G_y, axis = 0)
+                    G_input = np.matmul(G_y, g_y_input)
+                    
+                    # updating weight
+                    self.pm_hiddens[n]['w'] -= self.learning_rate * G_weight
+                    
+                    # updating bias
+                    self.pm_hiddens[n]['b'] -= self.learning_rate * G_bias
+                    
+                    G_y = G_input
+
     
     def visualization(self, cnt):
         print('Model {} visualization'.format(self.name))
@@ -237,3 +333,28 @@ class mlp_model(object):
         output, _ = self.forward_neuralnet(X)
         
         return output
+
+    def batch_nor_backprop(self, G_output, x1, x2, y_batch, mean, std, n):
+        epsilon = np.ones(shape = (std.shape[0], 1)) * 1e-5
+        
+        # x1 : fully nn input
+        # x2 : fully nn output, batch norm input
+        # y_batch : batch norm output
+
+        G_y_batch = self.pm_hiddens[n]['g'] * G_output
+        G_std = np.sum(np.multiply(G_y_batch, np.multiply(np.add(x2, mean * -1), -1/2 * np.power(np.add(np.square(std), epsilon), -1.5))), axis = 0)
+        G_mean = np.sum(np.multiply(G_y_batch, -1 * np.power(np.add(np.square(std), epsilon), -0.5)), axis = 0) + G_std * (-2) * (np.sum(np.add(x2, -1 * mean), axis = 0)) / mean.shape[0]
+        G_x2 = np.multiply(G_y_batch, np.power(np.add(np.square(std), epsilon), -0.5)) + G_std * 2 * (np.subtract(x2, mean)) / mean.shape[0] + G_mean / mean.shape[0]
+        
+        G_gamma = np.sum(np.multiply(G_output, y_batch), axis = 0)
+        G_beta = np.sum(G_output, axis = 0)
+
+        # updating gamma
+        self.pm_hiddens[n]['g'] -= self.learning_rate * G_gamma
+
+        # updating beta            
+        self.pm_hiddens[n]['beta'] -= self.learning_rate * G_beta
+
+        G_y = G_x2
+
+        return G_y

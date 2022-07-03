@@ -1,10 +1,14 @@
+from bitarray import test
 import numpy as np
 import pandas as pd
 from regex import W
 from sympy import re
+import mathutil
 
-test_array = np.random.randint(0, 100, size = 100)
+test_array = np.random.random(size = (100, 10))
 
-test_df = pd.DataFrame({'col1' : test_array, 'col2' : test_array * 2})
+a = np.std(test_array, axis = 1).reshape(100, 1)
 
-a = 100
+epsilon = np.ones(shape = (test_array.shape[0], 1)) * 1e-5
+
+print(epsilon)

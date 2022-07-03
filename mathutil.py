@@ -9,3 +9,9 @@ def relu(x):
 
 def derv_relu(x):
     return np.sign(x)
+
+def batch_mean(x):
+    return np.mean(x, axis = 1).reshape(x.shape[0], 1)
+
+def batch_std(x):
+    return np.std(x, axis = 1).reshape(x.shape[0], 1)
