@@ -5,6 +5,8 @@ Date 220616.
 Date 220703.
     BATCH NORMALIZATION 논문구현하기. (by SCL)
         VER02(220703. B.N)
+Date 220724.
+    SoftMax Multi Class Classification(image data). (by SCL)
 """
 
 import os
